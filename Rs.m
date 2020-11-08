@@ -1,124 +1,115 @@
-Data=xlsread('E:\Pre_Data\Ali\Test\Ali3.xlsx');
+%==============================%
+%    Revised Rs from the MOD16 algorithm   %
+%==============================%
+
+% Code: Ling Yuan,  Institute of Tibetan Plateau Research, Chinese Academy of Sciences, Beijing, China.
+% Questions to: yuanling@itpcas.ac.cn
+
+% References:
+% Cleugh et al., 2007. Regional evaporation estimates from flux tower and MODIS satellite data
+% Mu et al., 2007. Development of a global evapotranspiration algorithm based on MODIS and global meteorology data
+% Mu et al., 2011. Improvements to a MODIS global terrestrial evapotranspiration algorithm
+%--------------------------------------------------------------------------
+
+Data=xlsread('E:\Pre_Data\Ali\Test\****.xlsx');
 [m,n]=size(Data);
 
-beta=50;
-T0=273.15;
-P0=1013.25; 
+beta   = 2;          % (hPa)
+T0     = 273.15;  % zero Kelvin [C]
+P0     = 1013.25;  % Standard pressure (hPa)
+rd      = 287.0;      % Gas Constant for Dry air, from table 2.1 P25 of Brutsaert 2005 (J kg-1 K-1)
+k       = 0.41;       % von Karman constant
+g        = 9.8;       % Gravity accelaration (kg s-2)
 
-rd=287.0;
-h=0.03;
-k=0.41;
-g=9.8;
-ksac=0.622;
+zh    = Data(:,4);        % reference level of air temperature (m)
+zm    = zh;                 
+h     = Data(:,5);         % canopy height, (m)
+u     = Data(:,6);         % Wind speed, (m/s)
+Ta    = Data(:,7);        % air temperature, (C)
+Rh    = Data(:,8);        % relative humidity, (%)
+Pa    = Data(:,9);        % air pressure, (hPa)
+NDVI  = Data(:,10);  % the normalized difference vegetation index
+Rn    = Data(:,11);     % net radiation, (W m-2)
+G     = Data(:,12);      % soil heat flux, (W m-2)
+uf    = Data(:,13);       % frictional velocity
+L     = Data(:,14);       % the length of Monin-Obukhov (M-O length)
+LE    = Data(:,15);     % LE: latent heat flux, (W m-2)
 
-zh=Data(:,4);
-zm=zh;
-d0=Data(:,5);
-U=Data(:,6);
-Ta=Data(:,7);
-RH=Data(:,8);
-P=Data(:,9)/10;
-NDVI=Data(:,10);
-Rn=Data(:,11);
-G0=Data(:,12);
-uf=Data(:,13);
-L=Data(:,14);
-LE=Data(:,15);
+Cp         = 1013;            % Specific heat (J kg-1 C-1)
+rddcp    = rd/Cp;
+eps        = 0.622;            % e (unitless) is the ratio of molecular weight of water to dry air (equal to 0.622)
+sigma    = 5.6703e-8;   % Stefen-Boltzman's constant, (W m-2 K-4)
+lambda  = (2501-2.361*Ta)*1000;                       % Latent heat of water vaporization, (J kg-1)
+es          = 6.108*exp((17.27*Ta)./(237.3+Ta));       % Saturation vapour pressure at Ta, (hPa)      
+ea          = es.*Rh/100;                                             % Actual vapour pressure (hPa)
+VPD      = es-ea;                                                    % VPD: vapor pressure deficit, (hPa)
+delta      = (4098 .* es) ./ ((Ta + 237.3).^2);            % Slope of saturation vapour pressure curve at Ta (hPa/degC)
+gamma   = (Cp .* Pa) ./ (eps * lambda);              % Psychrometric constant (hPa/degC)
+rcorr      = 1.0./((P0./Pa).*(((Ta+273.15)/293.15).^1.75));
+rho_a     = 0.3846*Pa./(Ta+273.15);                                          % Density of air (kg m-3)
 
-Cp=4.2*0.242;
-lamada=2501-2.361*Ta; 
-rho_a=3.846.*P./(Ta+273.15);
-gama=Cp*P./(0.622*lamada);
-Es=0.6108*exp((17.27*Ta)./(237.3+Ta));
-Ea=Es.*RH/100;
-VPD=Es-Ea;
-deta=4098*Es./((Ta+237.3).^2);
+LAI       = single(real((sqrt(NDVI.*(1+NDVI)./(1-NDVI)))));   % leaf area index
+fc           = ((NDVI-0.005)./(0.95-0.005)).^2;                             % vegetation cover fraction                        
+nu          = 1.327e-5*(P0./Pa).*(((Ta+T0)/ T0).^1.754);            % kinematic viscousity 
 
-fc=(NDVI-0.2)/(0.8-0.2);
+fwet      = (Rh/100).^4;   % fwet: wet surface fraction
+fwet(Rh < 70) = 0;
 
-nu=1.327e-5*(P0./P).*(((Ta+T0)/ T0).^1.754); 
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%% z0h %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+z0m     = 0.138*h;          % aerodynamic roughness length
+Tf      = Ta.*(uf.^2)./(k*g*L);    % frictional tempertature
+z0h     = (70*nu./uf).*exp(-7.2*((uf.^0.5).*(abs(Tf).^0.25)));  % thermal roughness length
+z0h     = min(zh/10,max(z0h,1.0E-10));
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%% END %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 
-for i=1:m;
-   if NDVI(i,1)<0.3
-      Ac(i,1)=0;
-      As(i,1)=Rn(i,1)-G0(i,1);
-      LEs(i,1)=LE(i,1);
-   else
-      Ac(i,1)=Rn(i,1)*fc(i,1);
-      As(i,1)=Rn(i,1)*(1-fc(i,1))-G0(i,1);
-      LEs(i,1)=NaN;
-   end
-end
-
-
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%% Ra %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 for i=1:m
-  if isnan(RH(i,1))==0  
-    if (RH(i,1)<70)
-       Fw(i,1)=0;
-    end
-    if RH(i,1)>=70
-       Fw(i,1)=((RH(i,1)/100).^4);
-    end
-  end
-  if isnan(RH(i,1))==1
-     Fw(i,1)=NaN;
-  end
-end
-i=0;
-Fs=(RH/100).^(VPD/beta);  
-
-z0m=0.138*h;
-
-%L=(zm-d0)./Lz;
-Tf=Ta.*(uf.^2)./(k*g*L);
-z0h=(70*nu./uf).*exp(-7.2*((uf.^0.5).*(abs(Tf).^0.25)));
-
-for i=1:m
-  if isnan(L(i,1))==0
-     if L(i,1)>0
-        Fm(i,1)=-5.3*(zm(i,1)-z0m)/L(i,1);
-        Fh(i,1)=-8.0*(zh(i,1)-z0h(i,1))/L(i,1);
-        x(i,1)=0;
-        x0(i,1)=0;
-        y(i,1)=0;
-        y0(i,1)=0;
-      end
-      if L(i,1)==0
-         Fm(i,1)=0;
-         Fh(i,1)=0;
-        x(i,1)=0;
-        x0(i,1)=0;
-        y(i,1)=0;
-        y0(i,1)=0;
-      end
-      if L(i,1)<0
+    if isnan(L(i,1))==0
+       if L(i,1)>0
+          x(i,1)=0;
+          x0(i,1)=0;
+          y(i,1)=0;
+          y0(i,1)=0;
+          Fm(i,1)=-5.3*(zm(i,1)-z0m(i,1))/L(i,1);
+          Fh(i,1)=-8.0*(zh(i,1)-z0h(i,1))/L(i,1);
+       end
+       if L(i,1)==0
+          x(i,1)=0;
+          x0(i,1)=0;
+          y(i,1)=0;
+          y0(i,1)=0;
+          Fm(i,1)=0;
+          Fh(i,1)=0;
+       end
+       if L(i,1)<0
           x(i,1)=(1-19*zm(i,1)/L(i,1))^0.25;
-          x0(i,1)=(1-19*z0m/L(i,1))^0.25;
+          x0(i,1)=(1-19*z0m(i,1)/L(i,1))^0.25;
           y(i,1)=(1-11.6*zh(i,1)/L(i,1))^0.5;
           y0(i,1)=(1-11.6*z0h(i,1)/L(i,1))^0.5;
           Fm(i,1)=2*log((1+x(i,1))/(1+x0(i,1)))+log((1+x(i,1)*x(i,1))/(1+x0(i,1)*x0(i,1)))-2*atan(x(i,1))+2*atan(x0(i,1));
           Fh(i,1)=2*log((1+y(i,1))/(1+y0(i,1)));
        end
-end
-end
-Ra=log(zh./z0h-Fh).*log(zm/z0m-Fm)./(U*k*k);
-
-for i=1:m
-    if NDVI(i,1)<0.3  
-         LEs(i,1)=LE(i,1);
     else
-         LEs(i,1)=NaN;
+       x(i,1)=NaN;
+       x0(i,1)=NaN;
+       y(i,1)=NaN;
+       y0(i,1)=NaN;
+       Fm(i,1)=NaN;
+       Fh(i,1)=NaN;
     end
 end
+i=0;
+Ra  = log(zh./z0h-Fh).*log(zm./z0m-Fm)./(u*k*k);
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%% END %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 
-Rs=(((deta.*As+Cp*rho_a.*VPD./Ra).*(1-Fw).*Fs./LE-deta)./gama-1).*Ra;
+%%%%%%%%%%%
+% Radiation partition
+Ac     = fc .* Rn;               % the part of Net Radiation allocated to the canopy, (W m-2)
+As     = (1 - fc) .* Rn - G; % the part of Net Radiation allocated to soil surface (W m-2)
 
-
-
-
-
-
-
+%%  Rs  %
+A   = (delta.*As+Cp*rho_a.*VPD./Ra).*(Rh/100).^(VPD ./ beta);
+Rs  = (A-delta).*Ra./gamma-Ra; 
 
 
 
