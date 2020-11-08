@@ -5,7 +5,7 @@ Data=xlsread('D:\Test\MODIS\US-Wkg\USWkg.xlsx');
 % Data=xlsread('D:\Test\MODIS\Duolun\Duolun.xlsx');
 [m,n]=size(Data);
 
-beta=50;
+beta=2;
 T0=273.15;
 P0=1013.25; 
 rd=287.0;
